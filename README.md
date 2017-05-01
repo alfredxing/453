@@ -9,3 +9,4 @@ Thanks to @miekg's [amazing DNS library](https://github.com/miekg/dns), the serv
 - [ ] Error handling
 - [ ] `edns_client_subnet` support
 - [ ] `random_padding` support
+- [ ] Configuration; command line arguments
