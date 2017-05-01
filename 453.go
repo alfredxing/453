@@ -7,34 +7,35 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 const endpoint string = "https://dns.google.com/resolve"
 
-// An HTTPResponse represents the JSON response object returned by the Google API.
-type HTTPResponse struct {
-	Status     int32          `json:"Status"`
-	TC         bool           `json:"TC"`
-	RD         bool           `json:"RD"`
-	RA         bool           `json:"RA"`
-	AD         bool           `json:"AD"`
-	CD         bool           `json:"CD"`
-	Question   []HTTPQuestion `json:"Question"`
-	Answer     []HTTPAnswer   `json:"Answer"`
-	Authority  []HTTPAnswer   `json:"Authority"`
-	Additional []HTTPAnswer   `json:"Additional"`
-	Comment    string         `json:"Comment"`
+// A Response represents the JSON response object returned by the Google API.
+type Response struct {
+	Status     int32      `json:"Status"`
+	TC         bool       `json:"TC"`
+	RD         bool       `json:"RD"`
+	RA         bool       `json:"RA"`
+	AD         bool       `json:"AD"`
+	CD         bool       `json:"CD"`
+	Question   []Question `json:"Question"`
+	Answer     []Answer   `json:"Answer"`
+	Authority  []Answer   `json:"Authority"`
+	Additional []Answer   `json:"Additional"`
+	Comment    string     `json:"Comment"`
 }
 
-// An HTTPQuestion represents a DNS question part in the JSON response.
-type HTTPQuestion struct {
+// A Question represents a DNS question part in the JSON response.
+type Question struct {
 	Name string `json:"name"`
 	Type uint16 `json:"type"`
 }
 
-// An HTTPAnswer represents a DNS answer part in the JSON response; it can be
+// An Answer represents a DNS answer part in the JSON response; it can be
 // part of the answer, authority, or extra sections of the DNS response.
-type HTTPAnswer struct {
+type Answer struct {
 	Name string `json:"name"`
 	Type uint16 `json:"type"`
 	TTL  uint32 `json:"TTL"`
@@ -45,9 +46,9 @@ type handler struct{}
 
 // ServeDNS handles DNS queries from clients.
 func (_ handler) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
+	start := time.Now()
 	question := req.Question[0]
 	qType, _ := dns.TypeToString[question.Qtype]
-	log.Printf("%s %s\n", question.Name, qType)
 
 	// Set up HTTP request
 	httpReq, _ := http.NewRequest("GET", endpoint, nil)
@@ -63,19 +64,21 @@ func (_ handler) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	defer httpRes.Body.Close()
 
 	// Unmarshal JSON response
-	res := HTTPResponse{}
-	decoder := json.NewDecoder(httpRes.Body)
-	decoder.Decode(&res)
+	res := Response{}
+	json.NewDecoder(httpRes.Body).Decode(&res)
 
 	// Parse response
 	msg := parse(&res, req)
+
+	// Log request and time
+	log.Printf("%s %s %dns\n", question.Name, qType, time.Now().Sub(start))
 
 	// Return response
 	w.WriteMsg(&msg)
 }
 
-// parse converts an `HTTPResponse` from Google into a `dns.Msg`.
-func parse(res *HTTPResponse, req *dns.Msg) dns.Msg {
+// parse converts a `Response` from Google into a `dns.Msg`.
+func parse(res *Response, req *dns.Msg) dns.Msg {
 	// Parse questions
 	questions := []dns.Question{}
 	for _, q := range res.Question {
@@ -126,8 +129,8 @@ func parse(res *HTTPResponse, req *dns.Msg) dns.Msg {
 	}
 }
 
-// parseRR converts a single `HTTPAnswer` struct into a single `dns.RR` resource record.
-func parseRR(a *HTTPAnswer) dns.RR {
+// parseRR converts a single `Answer` struct into a single `dns.RR` resource record.
+func parseRR(a *Answer) dns.RR {
 	// Construct resource record string for parsing
 	typeName, _ := dns.TypeToString[a.Type]
 	resource := fmt.Sprintf("%s %d IN %s %s", a.Name, a.TTL, typeName, a.Data)
